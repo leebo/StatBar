@@ -217,7 +217,7 @@ public struct TemperatureInfo {
 
 // MARK: - 进程信息
 
-public struct ProcessInfo: Identifiable {
+public struct ProcessEntry: Identifiable {
     public let id: Int32                // PID
     public let name: String             // 进程名
     public let cpuUsage: Double         // CPU 使用率
@@ -251,11 +251,11 @@ public struct SystemStats {
     public let network: NetworkInfo
     public let battery: BatteryInfo?
     public let temperature: TemperatureInfo?
-    public let topProcesses: [ProcessInfo]
+    public let topProcesses: [ProcessEntry]
     public let timestamp: Date
     
     public init(cpu: CPUInfo, memory: MemoryInfo, disk: DiskInfo, network: NetworkInfo,
-                battery: BatteryInfo?, temperature: TemperatureInfo?, topProcesses: [ProcessInfo]) {
+                battery: BatteryInfo?, temperature: TemperatureInfo?, topProcesses: [ProcessEntry]) {
         self.cpu = cpu
         self.memory = memory
         self.disk = disk

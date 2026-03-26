@@ -15,7 +15,7 @@ public class SystemMonitor: ObservableObject {
     @Published public var network: NetworkInfo?
     @Published public var battery: BatteryInfo?
     @Published public var temperature: TemperatureInfo?
-    @Published public var topProcesses: [ProcessInfo] = []
+    @Published public var topProcesses: [ProcessEntry] = []
     @Published public var history: StatsHistory
     
     // MARK: - Private Properties
@@ -208,7 +208,7 @@ public class CPUService {
         let idle = Double(idleTicks) / Double(totalTicks) * 100
         let usage = user + system
         
-        let coreCount = ProcessInfo.processInfo.processorCount
+        let coreCount = Foundation.ProcessInfo.processInfo.processorCount
         
         return CPUInfo(
             usage: usage,
@@ -240,7 +240,7 @@ public class MemoryService {
         
         let pageSize = UInt64(vm_kernel_page_size)
         
-        let total = UInt64(ProcessInfo.processInfo.physicalMemory)
+        let total = UInt64(Foundation.ProcessInfo.processInfo.physicalMemory)
         let free = UInt64(stats.free_count) * pageSize
         let active = UInt64(stats.active_count) * pageSize
         let inactive = UInt64(stats.inactive_count) * pageSize
@@ -248,12 +248,15 @@ public class MemoryService {
         let compressed = UInt64(stats.compressor_page_count) * pageSize
         let used = active + wired + compressed
         
+        // 内存压力评估
         let pressure: MemoryPressure
-        let pressureStatus = stats.mem_pressure_status
-        switch pressureStatus {
-        case 1: pressure = .warning
-        case 2, 3: pressure = .critical
-        default: pressure = .nominal
+        let usagePercent = Double(used) / Double(total)
+        if usagePercent > 0.9 {
+            pressure = .critical
+        } else if usagePercent > 0.75 {
+            pressure = .warning
+        } else {
+            pressure = .nominal
         }
         
         return MemoryInfo(
@@ -363,9 +366,9 @@ public class BatteryService {
     
     public func getUsage() async -> BatteryInfo? {
         // 检查是否有电池
-        guard IOPSCopyPowerSourcesInfo() != nil else { return nil }
+        guard let powerSourcesInfo = IOPSCopyPowerSourcesInfo() else { return nil }
         
-        guard let powerSources = IOPSCopyPowerSourcesList().takeRetainedValue() as? [[String: Any]] else {
+        guard let powerSources = IOPSCopyPowerSourcesList(powerSourcesInfo.takeRetainedValue()).takeRetainedValue() as? [[String: Any]] else {
             return nil
         }
         
