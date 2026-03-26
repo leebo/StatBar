@@ -86,8 +86,8 @@ struct MenuBarExtraView: View {
                 
                 Spacer()
                 
-                if let cpu = monitor.cpu, let temp = monitor.temperature?.cpu {
-                    Text(String(format: "CPU: %.0f%% · %.0f°C", cpu.usage, temp))
+                if let cpu = monitor.cpu {
+                    Text(String(format: "CPU: %.0f%%", cpu.usage))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -107,10 +107,10 @@ struct MenuBarExtraView: View {
     
     private func openSettings() {
         // 打开设置窗口
-        if #available(macOS 13.0, *) {
-            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        if let window = NSApplication.shared.windows.first(where: { $0.title == "设置" }) {
+            window.makeKeyAndOrderFront()
         } else {
-            NSApplication.shared.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+            NSApp.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         }
     }
 }
@@ -139,21 +139,6 @@ struct CPUDetailView: View {
                         Text("\(cpu.coreCount) 核心")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
-                        
-                        if let temp = monitor.temperature?.cpu {
-                            HStack(spacing: 2) {
-                                Image(systemName: "thermometer.medium")
-                                    .foregroundColor(temperatureColor(temp))
-                                Text(String(format: "%.0f°C", temp))
-                                    .font(.subheadline)
-                            }
-                        }
-                        
-                        if let fan = monitor.temperature?.fanSpeed {
-                            Text(String(format: "%d RPM", fan))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
                     }
                 }
                 
@@ -168,95 +153,15 @@ struct CPUDetailView: View {
             Divider()
             
             // 历史图表
-            HStack {
-                Text("历史 (\(settings.historyLength)秒)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-                
-                if let temp = monitor.temperature?.cpu {
-                    Text(String(format: "温度: %.0f°C", temp))
-                        .font(.caption)
-                        .foregroundColor(temperatureColor(temp))
-                }
-            }
+            Text("历史 (\(settings.historyLength)秒)")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
             
             if !monitor.history.cpu.isEmpty {
-                LineChartView(data: monitor.history.cpu, color: .blue, maxPoints: settings.historyLength)
+                LineChartView(data: monitor.history.cpu, color: .blue)
                     .frame(height: 80)
             }
-            
-            // 温度详情
-            if let temp = monitor.temperature {
-                TemperatureDetailView(temperature: temp)
-            }
         }
-    }
-    
-    private func temperatureColor(_ temp: Double) -> Color {
-        switch temp {
-        case 0..<50: return .green
-        case 50..<70: return .orange
-        default: return .red
-        }
-    }
-}
-
-// MARK: - 温度详情视图
-
-struct TemperatureDetailView: View {
-    let temperature: TemperatureInfo
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("温度传感器")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            HStack(spacing: 12) {
-                if let cpu = temperature.cpu {
-                    TemperatureGauge(name: "CPU", value: cpu, color: .red)
-                }
-                if let gpu = temperature.gpu {
-                    TemperatureGauge(name: "GPU", value: gpu, color: .orange)
-                }
-                if let battery = temperature.battery {
-                    TemperatureGauge(name: "电池", value: battery, color: .green)
-                }
-            }
-            
-            if let fan = temperature.fanSpeed {
-                HStack {
-                    Image(systemName: "fan")
-                    Text("风扇转速")
-                    Spacer()
-                    Text("\(fan) RPM")
-                }
-                .font(.caption)
-            }
-        }
-        .padding(8)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(8)
-    }
-}
-
-struct TemperatureGauge: View {
-    let name: String
-    let value: Double
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(name)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-            Text(String(format: "%.0f°", value))
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .foregroundColor(color)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 
@@ -307,7 +212,7 @@ struct MemoryDetailView: View {
                 .foregroundColor(.secondary)
             
             if !monitor.history.memory.isEmpty {
-                LineChartView(data: monitor.history.memory, color: .purple, maxPoints: settings.historyLength)
+                LineChartView(data: monitor.history.memory, color: .purple)
                     .frame(height: 80)
             }
         }
@@ -390,33 +295,6 @@ struct DiskDetailView: View {
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
-                
-                // 读写速度
-                if disk.readSpeed > 0 || disk.writeSpeed > 0 {
-                    Divider()
-                    
-                    HStack {
-                        VStack {
-                            Image(systemName: "arrow.down.circle")
-                            Text("\(disk.readSpeed / 1024 / 1024) MB/s")
-                                .font(.caption)
-                            Text("读取")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        
-                        VStack {
-                            Image(systemName: "arrow.up.circle")
-                            Text("\(disk.writeSpeed / 1024 / 1024) MB/s")
-                                .font(.caption)
-                            Text("写入")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
             }
         }
     }
@@ -482,7 +360,7 @@ struct NetworkDetailView: View {
                         Text("下载")
                             .font(.caption)
                             .foregroundColor(.green)
-                        LineChartView(data: monitor.history.networkDown, color: .green, maxPoints: settings.historyLength)
+                        LineChartView(data: monitor.history.networkDown, color: .green)
                             .frame(height: 50)
                     }
                 }
@@ -492,7 +370,7 @@ struct NetworkDetailView: View {
                         Text("上传")
                             .font(.caption)
                             .foregroundColor(.blue)
-                        LineChartView(data: monitor.history.networkUp, color: .blue, maxPoints: settings.historyLength)
+                        LineChartView(data: monitor.history.networkUp, color: .blue)
                             .frame(height: 50)
                     }
                 }
@@ -552,15 +430,6 @@ struct BatteryDetailView: View {
                             Text("循环次数")
                             Spacer()
                             Text("\(cycles)")
-                        }
-                    }
-                    
-                    if let health = battery.health {
-                        HStack {
-                            Text("电池健康")
-                            Spacer()
-                            Text(health.rawValue)
-                                .foregroundColor(health == .normal ? .green : .orange)
                         }
                     }
                 }
@@ -667,7 +536,7 @@ struct GaugeView: View {
                     .stroke(Color.gray.opacity(0.2), lineWidth: 4)
                 
                 Circle()
-                    .trim(from: 0, to: value)
+                    .trim(from: 0, to: min(value, 1.0))
                     .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 
@@ -695,7 +564,7 @@ struct LineChartView: View {
             let displayData = Array(data.suffix(maxPoints))
             
             Path { path in
-                guard !displayData.isEmpty else { return }
+                guard displayData.count > 1 else { return }
                 
                 let width = geometry.size.width
                 let height = geometry.size.height

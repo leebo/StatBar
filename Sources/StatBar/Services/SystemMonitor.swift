@@ -286,10 +286,6 @@ public class MemoryService {
 
 public class DiskService {
     
-    private var previousRead: UInt64 = 0
-    private var previousWrite: UInt64 = 0
-    private var previousTime: Date = Date()
-    
     public init() {}
     
     public func getUsage() async -> DiskInfo? {
@@ -303,17 +299,12 @@ public class DiskService {
         let free = (attributes[.systemFreeSize] as? UInt64) ?? 0
         let used = total - free
         
-        // 磁盘 I/O 统计需要 IOKit
-        // 这里暂时返回 0，实际需要通过 IOStorageStatistics 获取
-        let readSpeed: UInt64 = 0
-        let writeSpeed: UInt64 = 0
-        
         return DiskInfo(
             total: total,
             free: free,
             used: used,
-            readSpeed: readSpeed,
-            writeSpeed: writeSpeed,
+            readSpeed: 0,
+            writeSpeed: 0,
             name: "Macintosh HD"
         )
     }
@@ -472,6 +463,7 @@ public class TemperatureService {
         
         var input = SMCKeyData()
         var output = SMCKeyData()
+        var inputSize = UInt32(MemoryLayout<SMCKeyData>.size)
         var outputSize = UInt32(MemoryLayout<SMCKeyData>.size)
         
         // 将键名转换为 4 字节代码
@@ -481,34 +473,29 @@ public class TemperatureService {
         input.key = UInt32(bytes: keyBytes)
         input.data8 = SMC_CMD_READ_KEYINFO
         
-        var inputSize = Int(MemoryLayout<SMCKeyData>.size)
-        var outSize = Int(outputSize)
         let result = IOConnectCallStructMethod(
             smcConnection,
             UInt32(KERNEL_INDEX_SMC),
             &input,
             inputSize,
             &output,
-            &outSize
+            &outputSize
         )
-        outputSize = UInt32(outSize)
         
         guard result == KERN_SUCCESS else { return nil }
         
-        let dataType = output.keyInfo.dataType
         let dataSize = output.keyInfo.dataSize
         
         input.keyInfo.dataSize = dataSize
         input.data8 = SMC_CMD_READ_BYTES
         
-        outSize = Int(MemoryLayout<SMCKeyData>.size)
         let result2 = IOConnectCallStructMethod(
             smcConnection,
             UInt32(KERNEL_INDEX_SMC),
             &input,
             inputSize,
             &output,
-            &outSize
+            &outputSize
         )
         
         guard result2 == KERN_SUCCESS else { return nil }
@@ -534,6 +521,7 @@ public class TemperatureService {
         
         var input = SMCKeyData()
         var output = SMCKeyData()
+        var inputSize = UInt32(MemoryLayout<SMCKeyData>.size)
         var outputSize = UInt32(MemoryLayout<SMCKeyData>.size)
         
         let keyBytes = key.utf8.map { UInt8($0) }
@@ -546,7 +534,7 @@ public class TemperatureService {
             smcConnection,
             UInt32(KERNEL_INDEX_SMC),
             &input,
-            UInt32(MemoryLayout<SMCKeyData>.size),
+            inputSize,
             &output,
             &outputSize
         )
@@ -560,7 +548,7 @@ public class TemperatureService {
             smcConnection,
             UInt32(KERNEL_INDEX_SMC),
             &input,
-            UInt32(MemoryLayout<SMCKeyData>.size),
+            inputSize,
             &output,
             &outputSize
         )
@@ -587,7 +575,7 @@ private struct SMCKeyData {
     var bytes: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
                 UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
                 UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
-                UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+                UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
     var result: UInt8 = 0
     var status: UInt8 = 0
     var data8_2: UInt8 = 0
