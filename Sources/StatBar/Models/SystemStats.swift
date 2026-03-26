@@ -300,10 +300,22 @@ public struct StatsHistory {
     public mutating func add(cpu: Double, memory: Double, netDown: UInt64, netUp: UInt64) {
         let now = Date()
         
-        addPoint(&self.cpu, timestamp: now, value: cpu)
-        addPoint(&self.memory, timestamp: now, value: memory)
-        addPoint(&self.networkDown, timestamp: now, value: Double(netDown) / 1_048_576.0)
-        addPoint(&self.networkUp, timestamp: now, value: Double(netUp) / 1_048_576.0)
+        // 避免独占访问冲突，逐个添加
+        var cpuData = self.cpu
+        addPoint(&cpuData, timestamp: now, value: cpu)
+        self.cpu = cpuData
+        
+        var memoryData = self.memory
+        addPoint(&memoryData, timestamp: now, value: memory)
+        self.memory = memoryData
+        
+        var networkDownData = self.networkDown
+        addPoint(&networkDownData, timestamp: now, value: Double(netDown) / 1_048_576.0)
+        self.networkDown = networkDownData
+        
+        var networkUpData = self.networkUp
+        addPoint(&networkUpData, timestamp: now, value: Double(netUp) / 1_048_576.0)
+        self.networkUp = networkUpData
     }
     
     private mutating func addPoint(_ array: inout [StatsDataPoint], timestamp: Date, value: Double) {
