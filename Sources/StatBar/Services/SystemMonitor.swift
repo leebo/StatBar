@@ -76,7 +76,7 @@ public class SystemMonitor: ObservableObject {
         var newNetwork: NetworkInfo?
         var newBattery: BatteryInfo?
         var newTemperature: TemperatureInfo?
-        var newProcesses: [ProcessInfo] = []
+        var newProcesses: [ProcessEntry] = []
         
         // 并发获取所有数据
         await withTaskGroup(of: Void.self) { group in
