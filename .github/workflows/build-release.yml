@@ -44,21 +44,21 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           BUILD_DIR=".build/release"
           
-          # Build universal binary
-          swift build -c release --arch arm64 --arch x86_64
+          # Build release version
+          swift build -c release
           
           # Create app bundle structure
           mkdir -p StatBar.app/Contents/MacOS
           mkdir -p StatBar.app/Contents/Resources
           
           # Copy executable
-          cp .build/apple/Products/Release/StatBar StatBar.app/Contents/MacOS/StatBar
+          cp .build/release/StatBar StatBar.app/Contents/MacOS/StatBar
           
           # Copy Info.plist
           cp Sources/StatBar/Info.plist StatBar.app/Contents/Info.plist
           
           # Update version in Info.plist
-          sed -i '' "s/1.0/${VERSION}/" StatBar.app/Contents/Info.plist
+          sed -i '' "s/1.0.0/${VERSION}/" StatBar.app/Contents/Info.plist
           
           echo "App bundle created at StatBar.app"
           ls -la StatBar.app/Contents/MacOS/
@@ -91,6 +91,7 @@ jobs:
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: StatBar ${{ steps.version.outputs.version }}
@@ -100,19 +101,21 @@ jobs:
             macOS menu bar performance monitor
             
             ### System Requirements
-            - macOS 11.0+ (Big Sur)
+            - macOS 13.0+ (Ventura)
             - Intel or Apple Silicon
             
             ### Features
-            - CPU usage monitoring
-            - Memory usage monitoring  
+            - CPU usage monitoring with history chart
+            - Memory usage monitoring with pressure status
             - Disk space monitoring
             - Network speed monitoring
-            - Battery status monitoring
-            - Process list
-            - History charts
-          files: |
-            StatBar-*.dmg
-            StatBar-*.zip
+            - Battery status with cycle count
+            - Temperature sensors (CPU, GPU, Battery)
+            - Fan speed monitoring
+            - Process list sorted by memory
+            - 60-second history charts
+            - Settings panel with customization
+            - Launch at login support
+          files: artifacts/*
           draft: false
           prerelease: false
