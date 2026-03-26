@@ -460,8 +460,8 @@ public class ProcessService {
     
     public init() {}
     
-    public func getTopProcesses(limit: Int = 10) async -> [ProcessInfo] {
-        var processList: [ProcessInfo] = []
+    public func getTopProcesses(limit: Int = 10) async -> [ProcessEntry] {
+        var processList: [ProcessEntry] = []
         
         // 获取进程列表
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL]
@@ -487,7 +487,7 @@ public class ProcessService {
             // 获取内存使用率
             let memSize = UInt64(proc.kp_eproc.e_xrssize) * UInt64(vm_kernel_page_size)
             
-            let processInfo = ProcessInfo(
+            let processEntry = ProcessEntry(
                 id: pid,
                 name: name,
                 cpuUsage: 0,  // 需要 task_info 计算
@@ -497,7 +497,7 @@ public class ProcessService {
                 startTime: nil
             )
             
-            processList.append(processInfo)
+            processList.append(processEntry)
         }
         
         // 按内存排序，取前 N 个

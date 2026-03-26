@@ -516,7 +516,7 @@ struct ProcessListView: View {
 }
 
 struct ProcessRow: View {
-    let process: ProcessInfo
+    let process: ProcessEntry
     
     var body: some View {
         HStack {
