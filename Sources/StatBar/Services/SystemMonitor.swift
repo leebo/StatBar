@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.ps
+import Darwin
 
 // MARK: - 系统监控服务
 
@@ -384,7 +385,8 @@ public class BatteryService {
         
         // 循环次数需要通过 IOKit 获取
         var cycleCount: Int?
-        if let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery")) {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        if service != 0 {
             defer { IOObjectRelease(service) }
             
             if let properties = IORegistryEntryCreateCFProperty(service, "CycleCount" as CFString, kCFAllocatorDefault, 0).takeRetainedValue() as? Int {
@@ -480,7 +482,7 @@ public class ProcessService {
             
             // 获取 CPU 使用率需要额外计算
             // 获取内存使用率
-            let memSize = proc.kp_eproc.e_xrssize * UInt16(Int32(vm_kernel_page_size) / 1024)
+            let memSize = UInt64(proc.kp_eproc.e_xrssize) * UInt64(vm_kernel_page_size)
             
             let processInfo = ProcessInfo(
                 id: pid,

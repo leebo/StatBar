@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - CPU 信息
 
-public struct CPUInfo {
+public struct CPUInfo: Equatable {
     public let usage: Double           // 总使用率 (0-100)
     public let user: Double            // 用户态
     public let system: Double          // 内核态
@@ -10,6 +10,15 @@ public struct CPUInfo {
     public let temperature: Double?    // 温度 (°C)
     public let coreCount: Int          // 核心数
     public let timestamp: Date
+    
+    public static func == (lhs: CPUInfo, rhs: CPUInfo) -> Bool {
+        lhs.usage == rhs.usage &&
+        lhs.user == rhs.user &&
+        lhs.system == rhs.system &&
+        lhs.idle == rhs.idle &&
+        lhs.temperature == rhs.temperature &&
+        lhs.coreCount == rhs.coreCount
+    }
     
     public init(usage: Double, user: Double, system: Double, idle: Double, 
                 temperature: Double? = nil, coreCount: Int) {

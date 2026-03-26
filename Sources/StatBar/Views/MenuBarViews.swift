@@ -311,7 +311,7 @@ struct DiskDetailView: View {
                 
                 // 使用进度条
                 ProgressView(value: Double(disk.used), total: Double(disk.total))
-                    .tint(disk.usagePercent > 80 ? .red : .blue)
+                    .accentColor(disk.usagePercent > 80 ? .red : .blue)
                 
                 HStack {
                     Text(String(format: "%.0f GB 已用", Double(disk.used) / 1_073_741_824.0))

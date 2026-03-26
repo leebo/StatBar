@@ -9,8 +9,5 @@ struct StatBarApp: App {
             MenuBarExtraView(monitor: monitor)
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: monitor.cpu) { _ in
-            print("CPU: \(String(describing: $0.cpu?.usage))")
-        }
     }
 }
