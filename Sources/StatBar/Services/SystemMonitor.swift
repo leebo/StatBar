@@ -481,14 +481,17 @@ public class TemperatureService {
         input.key = UInt32(bytes: keyBytes)
         input.data8 = SMC_CMD_READ_KEYINFO
         
+        var inputSize = Int(MemoryLayout<SMCKeyData>.size)
+        var outSize = Int(outputSize)
         let result = IOConnectCallStructMethod(
             smcConnection,
             UInt32(KERNEL_INDEX_SMC),
             &input,
-            UInt32(MemoryLayout<SMCKeyData>.size),
+            inputSize,
             &output,
-            &outputSize
+            &outSize
         )
+        outputSize = UInt32(outSize)
         
         guard result == KERN_SUCCESS else { return nil }
         
@@ -498,13 +501,14 @@ public class TemperatureService {
         input.keyInfo.dataSize = dataSize
         input.data8 = SMC_CMD_READ_BYTES
         
+        outSize = Int(MemoryLayout<SMCKeyData>.size)
         let result2 = IOConnectCallStructMethod(
             smcConnection,
             UInt32(KERNEL_INDEX_SMC),
             &input,
-            UInt32(MemoryLayout<SMCKeyData>.size),
+            inputSize,
             &output,
-            &outputSize
+            &outSize
         )
         
         guard result2 == KERN_SUCCESS else { return nil }
