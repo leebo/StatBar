@@ -202,15 +202,17 @@ public struct TemperatureInfo {
     public let battery: Double?         // 电池温度
     public let ambient: Double?         // 环境温度
     public let palmRest: Double?        // 掌托温度
+    public let fanSpeed: Int?           // 风扇转速 (RPM)
     public let timestamp: Date
     
     public init(cpu: Double? = nil, gpu: Double? = nil, battery: Double? = nil,
-                ambient: Double? = nil, palmRest: Double? = nil) {
+                ambient: Double? = nil, palmRest: Double? = nil, fanSpeed: Int? = nil) {
         self.cpu = cpu
         self.gpu = gpu
         self.battery = battery
         self.ambient = ambient
         self.palmRest = palmRest
+        self.fanSpeed = fanSpeed
         self.timestamp = Date()
     }
 }

@@ -1,75 +1,10 @@
 import SwiftUI
 
-// MARK: - 菜单栏视图
-
-struct MenuBarView: View {
-    @ObservedObject var monitor: SystemMonitor
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            // CPU
-            if let cpu = monitor.cpu {
-                MetricIcon(name: "cpu", color: .blue)
-                Text(String(format: "%.0f%%", cpu.usage))
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.primary)
-            }
-            
-            Divider()
-            
-            // 内存
-            if let memory = monitor.memory {
-                MetricIcon(name: "memorychip", color: .purple)
-                Text(String(format: "%.1fG", memory.usedGB))
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.primary)
-            }
-            
-            Divider()
-            
-            // 网络
-            if let network = monitor.network {
-                MetricIcon(name: "network", color: .green)
-                HStack(spacing: 2) {
-                    Text("↓\(network.downloadSpeedFormatted)")
-                    Text("↑\(network.uploadSpeedFormatted)")
-                }
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.primary)
-            }
-        }
-        .padding(.horizontal, 8)
-    }
-}
-
-// MARK: - 指标图标
-
-struct MetricIcon: View {
-    let name: String
-    let color: Color
-    
-    var body: some View {
-        Image(systemName: iconName)
-            .foregroundColor(color)
-            .font(.system(size: 12))
-    }
-    
-    private var iconName: String {
-        switch name {
-        case "cpu": return "cpu"
-        case "memorychip": return "memorychip"
-        case "network": return "network"
-        case "battery": return "battery.100"
-        case "thermometer": return "thermometer.medium"
-        default: return "questionmark.circle"
-        }
-    }
-}
-
 // MARK: - 下拉面板视图
 
 struct MenuBarExtraView: View {
     @ObservedObject var monitor: SystemMonitor
+    @ObservedObject var settings: AppSettings
     @State private var selectedTab: DetailTab = .cpu
     
     enum DetailTab: String, CaseIterable {
@@ -79,18 +14,41 @@ struct MenuBarExtraView: View {
         case network = "网络"
         case battery = "电池"
         case processes = "进程"
+        
+        var icon: String {
+            switch self {
+            case .cpu: return "cpu"
+            case .memory: return "memorychip"
+            case .disk: return "externaldrive"
+            case .network: return "network"
+            case .battery: return "battery.100"
+            case .processes: return "list.bullet"
+            }
+        }
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Tab 选择器
-            Picker("", selection: $selectedTab) {
+            HStack(spacing: 0) {
                 ForEach(DetailTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 16))
+                            Text(tab.rawValue)
+                                .font(.system(size: 10))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(selectedTab == tab ? Color.accentColor.opacity(0.1) : Color.clear)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .pickerStyle(.segmented)
-            .padding()
+            .background(Color(NSColor.windowBackgroundColor))
             
             Divider()
             
@@ -99,40 +57,61 @@ struct MenuBarExtraView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     switch selectedTab {
                     case .cpu:
-                        CPUDetailView(monitor: monitor)
+                        CPUDetailView(monitor: monitor, settings: settings)
                     case .memory:
-                        MemoryDetailView(monitor: monitor)
+                        MemoryDetailView(monitor: monitor, settings: settings)
                     case .disk:
                         DiskDetailView(monitor: monitor)
                     case .network:
-                        NetworkDetailView(monitor: monitor)
+                        NetworkDetailView(monitor: monitor, settings: settings)
                     case .battery:
                         BatteryDetailView(monitor: monitor)
                     case .processes:
-                        ProcessListView(monitor: monitor)
+                        ProcessListView(monitor: monitor, settings: settings)
                     }
                 }
                 .padding()
             }
-            .frame(height: 400)
+            .frame(height: 420)
             
             Divider()
             
             // 底部操作
             HStack {
-                Button("设置") {
-                    // 打开设置窗口
+                Button {
+                    openSettings()
+                } label: {
+                    Label("设置", systemImage: "gear")
                 }
                 
                 Spacer()
                 
-                Button("退出 StatBar") {
+                if let cpu = monitor.cpu, let temp = monitor.temperature?.cpu {
+                    Text(String(format: "CPU: %.0f%% · %.0f°C", cpu.usage, temp))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Button {
                     NSApplication.shared.terminate(nil)
+                } label: {
+                    Label("退出", systemImage: "power")
                 }
             }
             .padding()
         }
-        .frame(width: 320)
+        .frame(width: 340)
+    }
+    
+    private func openSettings() {
+        // 打开设置窗口
+        if #available(macOS 13.0, *) {
+            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApplication.shared.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
     }
 }
 
@@ -140,6 +119,7 @@ struct MenuBarExtraView: View {
 
 struct CPUDetailView: View {
     @ObservedObject var monitor: SystemMonitor
+    @ObservedObject var settings: AppSettings
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -160,10 +140,19 @@ struct CPUDetailView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         
-                        if let temp = cpu.temperature {
-                            Text(String(format: "%.0f°C", temp))
-                                .font(.subheadline)
-                                .foregroundColor(.orange)
+                        if let temp = monitor.temperature?.cpu {
+                            HStack(spacing: 2) {
+                                Image(systemName: "thermometer.medium")
+                                    .foregroundColor(temperatureColor(temp))
+                                Text(String(format: "%.0f°C", temp))
+                                    .font(.subheadline)
+                            }
+                        }
+                        
+                        if let fan = monitor.temperature?.fanSpeed {
+                            Text(String(format: "%d RPM", fan))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
                 }
@@ -179,15 +168,95 @@ struct CPUDetailView: View {
             Divider()
             
             // 历史图表
-            Text("历史 (60秒)")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+            HStack {
+                Text("历史 (\(settings.historyLength)秒)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                if let temp = monitor.temperature?.cpu {
+                    Text(String(format: "温度: %.0f°C", temp))
+                        .font(.caption)
+                        .foregroundColor(temperatureColor(temp))
+                }
+            }
             
             if !monitor.history.cpu.isEmpty {
-                LineChartView(data: monitor.history.cpu, color: .blue)
+                LineChartView(data: monitor.history.cpu, color: .blue, maxPoints: settings.historyLength)
                     .frame(height: 80)
             }
+            
+            // 温度详情
+            if let temp = monitor.temperature {
+                TemperatureDetailView(temperature: temp)
+            }
         }
+    }
+    
+    private func temperatureColor(_ temp: Double) -> Color {
+        switch temp {
+        case 0..<50: return .green
+        case 50..<70: return .orange
+        default: return .red
+        }
+    }
+}
+
+// MARK: - 温度详情视图
+
+struct TemperatureDetailView: View {
+    let temperature: TemperatureInfo
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("温度传感器")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            HStack(spacing: 12) {
+                if let cpu = temperature.cpu {
+                    TemperatureGauge(name: "CPU", value: cpu, color: .red)
+                }
+                if let gpu = temperature.gpu {
+                    TemperatureGauge(name: "GPU", value: gpu, color: .orange)
+                }
+                if let battery = temperature.battery {
+                    TemperatureGauge(name: "电池", value: battery, color: .green)
+                }
+            }
+            
+            if let fan = temperature.fanSpeed {
+                HStack {
+                    Image(systemName: "fan")
+                    Text("风扇转速")
+                    Spacer()
+                    Text("\(fan) RPM")
+                }
+                .font(.caption)
+            }
+        }
+        .padding(8)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+    }
+}
+
+struct TemperatureGauge: View {
+    let name: String
+    let value: Double
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(name)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(String(format: "%.0f°", value))
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundColor(color)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -195,6 +264,7 @@ struct CPUDetailView: View {
 
 struct MemoryDetailView: View {
     @ObservedObject var monitor: SystemMonitor
+    @ObservedObject var settings: AppSettings
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -232,12 +302,12 @@ struct MemoryDetailView: View {
             Divider()
             
             // 历史图表
-            Text("历史 (60秒)")
+            Text("历史 (\(settings.historyLength)秒)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
             if !monitor.history.memory.isEmpty {
-                LineChartView(data: monitor.history.memory, color: .purple)
+                LineChartView(data: monitor.history.memory, color: .purple, maxPoints: settings.historyLength)
                     .frame(height: 80)
             }
         }
@@ -320,6 +390,33 @@ struct DiskDetailView: View {
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
+                
+                // 读写速度
+                if disk.readSpeed > 0 || disk.writeSpeed > 0 {
+                    Divider()
+                    
+                    HStack {
+                        VStack {
+                            Image(systemName: "arrow.down.circle")
+                            Text("\(disk.readSpeed / 1024 / 1024) MB/s")
+                                .font(.caption)
+                            Text("读取")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        
+                        VStack {
+                            Image(systemName: "arrow.up.circle")
+                            Text("\(disk.writeSpeed / 1024 / 1024) MB/s")
+                                .font(.caption)
+                            Text("写入")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
             }
         }
     }
@@ -329,6 +426,7 @@ struct DiskDetailView: View {
 
 struct NetworkDetailView: View {
     @ObservedObject var monitor: SystemMonitor
+    @ObservedObject var settings: AppSettings
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -375,7 +473,7 @@ struct NetworkDetailView: View {
                 Divider()
                 
                 // 历史图表
-                Text("历史 (60秒)")
+                Text("历史 (\(settings.historyLength)秒)")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
@@ -384,7 +482,7 @@ struct NetworkDetailView: View {
                         Text("下载")
                             .font(.caption)
                             .foregroundColor(.green)
-                        LineChartView(data: monitor.history.networkDown, color: .green)
+                        LineChartView(data: monitor.history.networkDown, color: .green, maxPoints: settings.historyLength)
                             .frame(height: 50)
                     }
                 }
@@ -394,7 +492,7 @@ struct NetworkDetailView: View {
                         Text("上传")
                             .font(.caption)
                             .foregroundColor(.blue)
-                        LineChartView(data: monitor.history.networkUp, color: .blue)
+                        LineChartView(data: monitor.history.networkUp, color: .blue, maxPoints: settings.historyLength)
                             .frame(height: 50)
                     }
                 }
@@ -479,11 +577,7 @@ struct BatteryDetailView: View {
 
 struct ProcessListView: View {
     @ObservedObject var monitor: SystemMonitor
-    @State private var sortBy: ProcessSort = .memory
-    
-    enum ProcessSort {
-        case cpu, memory
-    }
+    @ObservedObject var settings: AppSettings
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -494,12 +588,13 @@ struct ProcessListView: View {
                 
                 Spacer()
                 
-                Picker("排序", selection: $sortBy) {
-                    Text("CPU").tag(ProcessSort.cpu)
-                    Text("内存").tag(ProcessSort.memory)
+                Picker("排序", selection: $settings.processSortBy) {
+                    ForEach(AppSettings.ProcessSortType.allCases, id: \.self) { type in
+                        Text(type.rawValue).tag(type)
+                    }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 150)
+                .frame(width: 180)
             }
             
             // 进程列表
@@ -507,10 +602,21 @@ struct ProcessListView: View {
                 Text("加载中...")
                     .foregroundColor(.secondary)
             } else {
-                ForEach(monitor.topProcesses) { process in
+                ForEach(sortedProcesses) { process in
                     ProcessRow(process: process)
                 }
             }
+        }
+    }
+    
+    private var sortedProcesses: [ProcessEntry] {
+        switch settings.processSortBy {
+        case .cpu:
+            return monitor.topProcesses.sorted { $0.cpuUsage > $1.cpuUsage }
+        case .memory:
+            return monitor.topProcesses.sorted { $0.memoryUsage > $1.memoryUsage }
+        case .name:
+            return monitor.topProcesses.sorted { $0.name < $1.name }
         }
     }
 }
@@ -536,12 +642,14 @@ struct ProcessRow: View {
                 Text(String(format: "%.0f MB", process.memoryMB))
                     .font(.subheadline.monospacedDigit())
                 
-                Text(String(format: "%.1f%%", process.cpuUsage))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if process.cpuUsage > 0 {
+                    Text(String(format: "%.1f%%", process.cpuUsage))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
     }
 }
 
@@ -580,21 +688,25 @@ struct GaugeView: View {
 struct LineChartView: View {
     let data: [StatsDataPoint]
     let color: Color
+    var maxPoints: Int = 60
     
     var body: some View {
         GeometryReader { geometry in
+            let displayData = Array(data.suffix(maxPoints))
+            
             Path { path in
-                guard !data.isEmpty else { return }
+                guard !displayData.isEmpty else { return }
                 
                 let width = geometry.size.width
                 let height = geometry.size.height
-                let stepX = width / CGFloat(data.count - 1)
+                let stepX = width / CGFloat(max(displayData.count - 1, 1))
                 
-                let maxValue = data.map(\.value).max() ?? 1
-                let minValue = data.map(\.value).min() ?? 0
-                let range = maxValue - minValue
+                let values = displayData.map(\.value)
+                let maxValue = max(values.max() ?? 1, 0.1)
+                let minValue = values.min() ?? 0
+                let range = max(maxValue - minValue, 0.1)
                 
-                for (index, point) in data.enumerated() {
+                for (index, point) in displayData.enumerated() {
                     let x = CGFloat(index) * stepX
                     let y = height - CGFloat((point.value - minValue) / range) * height
                     

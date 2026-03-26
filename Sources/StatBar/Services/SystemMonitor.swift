@@ -33,11 +33,18 @@ public class SystemMonitor: ObservableObject {
     
     // MARK: - Configuration
     
-    public var updateInterval: TimeInterval = 1.0
-    public var enabledMetrics: Set<MetricType> = Set(MetricType.allCases)
+    public var updateInterval: TimeInterval = 1.0 {
+        didSet {
+            if updateTimer != nil {
+                start()
+            }
+        }
+    }
     
-    public enum MetricType: CaseIterable {
-        case cpu, memory, disk, network, battery, temperature, processes
+    public var historyLength: Int = 60 {
+        didSet {
+            history = StatsHistory(maxPoints: historyLength)
+        }
     }
     
     // MARK: - Initialization
@@ -62,6 +69,8 @@ public class SystemMonitor: ObservableObject {
                 await self?.update()
             }
         }
+        
+        RunLoop.current.add(updateTimer!, forMode: .common)
     }
     
     public func stop() {
@@ -80,59 +89,45 @@ public class SystemMonitor: ObservableObject {
         
         // 并发获取所有数据
         await withTaskGroup(of: Void.self) { group in
-            if enabledMetrics.contains(.cpu) {
-                group.addTask {
-                    if let info = await self.cpuService.getUsage() {
-                        await MainActor.run { newCPU = info }
-                    }
+            group.addTask {
+                if let info = await self.cpuService.getUsage() {
+                    await MainActor.run { newCPU = info }
                 }
             }
             
-            if enabledMetrics.contains(.memory) {
-                group.addTask {
-                    if let info = await self.memoryService.getUsage() {
-                        await MainActor.run { newMemory = info }
-                    }
+            group.addTask {
+                if let info = await self.memoryService.getUsage() {
+                    await MainActor.run { newMemory = info }
                 }
             }
             
-            if enabledMetrics.contains(.disk) {
-                group.addTask {
-                    if let info = await self.diskService.getUsage() {
-                        await MainActor.run { newDisk = info }
-                    }
+            group.addTask {
+                if let info = await self.diskService.getUsage() {
+                    await MainActor.run { newDisk = info }
                 }
             }
             
-            if enabledMetrics.contains(.network) {
-                group.addTask {
-                    if let info = await self.networkService.getUsage() {
-                        await MainActor.run { newNetwork = info }
-                    }
+            group.addTask {
+                if let info = await self.networkService.getUsage() {
+                    await MainActor.run { newNetwork = info }
                 }
             }
             
-            if enabledMetrics.contains(.battery) {
-                group.addTask {
-                    if let info = await self.batteryService.getUsage() {
-                        await MainActor.run { newBattery = info }
-                    }
+            group.addTask {
+                if let info = await self.batteryService.getUsage() {
+                    await MainActor.run { newBattery = info }
                 }
             }
             
-            if enabledMetrics.contains(.temperature) {
-                group.addTask {
-                    if let info = await self.temperatureService.getTemperatures() {
-                        await MainActor.run { newTemperature = info }
-                    }
+            group.addTask {
+                if let info = await self.temperatureService.getTemperatures() {
+                    await MainActor.run { newTemperature = info }
                 }
             }
             
-            if enabledMetrics.contains(.processes) {
-                group.addTask {
-                    let processes = await self.processService.getTopProcesses(limit: 10)
-                    await MainActor.run { newProcesses = processes }
-                }
+            group.addTask {
+                let processes = await self.processService.getTopProcesses(limit: 15)
+                await MainActor.run { newProcesses = processes }
             }
         }
         
@@ -181,6 +176,8 @@ public class SystemMonitor: ObservableObject {
 
 public class CPUService {
     
+    private var previousTicks: (user: UInt64, system: UInt64, idle: UInt64, nice: UInt64)?
+    
     public init() {}
     
     public func getUsage() async -> CPUInfo? {
@@ -195,28 +192,41 @@ public class CPUService {
         
         guard result == KERN_SUCCESS else { return nil }
         
-        let userTicks = cpuLoad.cpu_ticks.0
-        let systemTicks = cpuLoad.cpu_ticks.1
-        let idleTicks = cpuLoad.cpu_ticks.2
-        let niceTicks = cpuLoad.cpu_ticks.3
+        let userTicks = UInt64(cpuLoad.cpu_ticks.0)
+        let systemTicks = UInt64(cpuLoad.cpu_ticks.1)
+        let idleTicks = UInt64(cpuLoad.cpu_ticks.2)
+        let niceTicks = UInt64(cpuLoad.cpu_ticks.3)
         
-        let totalTicks = userTicks + systemTicks + idleTicks + niceTicks
-        guard totalTicks > 0 else { return nil }
-        
-        let user = Double(userTicks) / Double(totalTicks) * 100
-        let system = Double(systemTicks) / Double(totalTicks) * 100
-        let idle = Double(idleTicks) / Double(totalTicks) * 100
-        let usage = user + system
-        
-        let coreCount = Foundation.ProcessInfo.processInfo.processorCount
-        
-        return CPUInfo(
-            usage: usage,
-            user: user,
-            system: system,
-            idle: idle,
-            coreCount: coreCount
-        )
+        // 计算增量
+        if let prev = previousTicks {
+            let userDelta = Double(userTicks - prev.user)
+            let systemDelta = Double(systemTicks - prev.system)
+            let idleDelta = Double(idleTicks - prev.idle)
+            let niceDelta = Double(niceTicks - prev.nice)
+            
+            let total = userDelta + systemDelta + idleDelta + niceDelta
+            guard total > 0 else { return nil }
+            
+            let user = userDelta / total * 100
+            let system = systemDelta / total * 100
+            let idle = idleDelta / total * 100
+            let usage = user + system
+            
+            previousTicks = (userTicks, systemTicks, idleTicks, niceTicks)
+            
+            let coreCount = Foundation.ProcessInfo.processInfo.processorCount
+            
+            return CPUInfo(
+                usage: usage,
+                user: user,
+                system: system,
+                idle: idle,
+                coreCount: coreCount
+            )
+        } else {
+            previousTicks = (userTicks, systemTicks, idleTicks, niceTicks)
+            return nil
+        }
     }
 }
 
@@ -276,6 +286,10 @@ public class MemoryService {
 
 public class DiskService {
     
+    private var previousRead: UInt64 = 0
+    private var previousWrite: UInt64 = 0
+    private var previousTime: Date = Date()
+    
     public init() {}
     
     public func getUsage() async -> DiskInfo? {
@@ -289,15 +303,17 @@ public class DiskService {
         let free = (attributes[.systemFreeSize] as? UInt64) ?? 0
         let used = total - free
         
-        // 磁盘速度需要通过 IOKit 获取，这里简化处理
-        // 实际实现需要 IOStoragestatistics
+        // 磁盘 I/O 统计需要 IOKit
+        // 这里暂时返回 0，实际需要通过 IOStorageStatistics 获取
+        let readSpeed: UInt64 = 0
+        let writeSpeed: UInt64 = 0
         
         return DiskInfo(
             total: total,
             free: free,
             used: used,
-            readSpeed: 0,
-            writeSpeed: 0,
+            readSpeed: readSpeed,
+            writeSpeed: writeSpeed,
             name: "Macintosh HD"
         )
     }
@@ -392,8 +408,10 @@ public class BatteryService {
         if service != 0 {
             defer { IOObjectRelease(service) }
             
-            if let properties = IORegistryEntryCreateCFProperty(service, "CycleCount" as CFString, kCFAllocatorDefault, 0).takeRetainedValue() as? Int {
-                cycleCount = properties
+            if let properties = IORegistryEntryCreateCFProperty(service, "CycleCount" as CFString, kCFAllocatorDefault, 0) {
+                if let cycles = properties.takeRetainedValue() as? Int {
+                    cycleCount = cycles
+                }
             }
         }
         
@@ -412,45 +430,176 @@ public class BatteryService {
 
 public class TemperatureService {
     
-    public init() {}
+    private var smcConnection: io_connect_t = 0
+    
+    public init() {
+        connectToSMC()
+    }
+    
+    deinit {
+        if smcConnection != 0 {
+            IOServiceClose(smcConnection)
+        }
+    }
+    
+    private func connectToSMC() {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSMC"))
+        if service != 0 {
+            defer { IOObjectRelease(service) }
+            IOServiceOpen(service, mach_task_self_, 0, &smcConnection)
+        }
+    }
     
     public func getTemperatures() async -> TemperatureInfo? {
-        // 温度需要通过 SMC (System Management Controller) 获取
-        // 这里提供简化实现，实际需要连接 IOKit 的 AppleSMC 服务
-        
         var cpu: Double?
         var gpu: Double?
         var battery: Double?
+        var fanSpeed: Int?
         
-        // 尝试获取 SMC 服务
-        let matching = IOServiceMatching("AppleSMC")
-        var iterator: io_iterator_t = 0
+        // 读取 SMC 温度键值
+        cpu = readTemperature(key: "TC0D") ?? readTemperature(key: "TC0E") ?? readTemperature(key: "TC0F")
+        gpu = readTemperature(key: "TG0D")
+        battery = readTemperature(key: "TB0T")
         
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else {
-            return nil
-        }
-        defer { IOObjectRelease(iterator) }
+        // 读取风扇转速
+        fanSpeed = readFanSpeed()
         
-        let service = IOIteratorNext(iterator)
-        guard service != 0 else { return nil }
-        defer { IOObjectRelease(service) }
-        
-        // 读取温度键值
-        // TC0C, TC0D, TC0E, TC0F - CPU 温度
-        // TG0D - GPU 温度
-        // TB0T - 电池温度
-        
-        cpu = readSMCTemperature(service, key: "TC0D")
-        gpu = readSMCTemperature(service, key: "TG0D")
-        battery = readSMCTemperature(service, key: "TB0T")
-        
-        return TemperatureInfo(cpu: cpu, gpu: gpu, battery: battery)
+        return TemperatureInfo(cpu: cpu, gpu: gpu, battery: battery, fanSpeed: fanSpeed)
     }
     
-    private func readSMCTemperature(_ service: io_object_t, key: String) -> Double? {
-        // SMC 温度读取需要底层实现
-        // 这里返回 nil，实际实现需要使用 SMC 命令
+    private func readTemperature(key: String) -> Double? {
+        guard smcConnection != 0 else { return nil }
+        
+        var input = SMCKeyData()
+        var output = SMCKeyData()
+        var outputSize = UInt32(MemoryLayout<SMCKeyData>.size)
+        
+        // 将键名转换为 4 字节代码
+        let keyBytes = key.utf8.map { UInt8($0) }
+        guard keyBytes.count == 4 else { return nil }
+        
+        input.key = UInt32(bytes: keyBytes)
+        input.data8 = SMC_CMD_READ_KEYINFO
+        
+        let result = IOConnectCallStructMethod(
+            smcConnection,
+            UInt32(KERNEL_INDEX_SMC),
+            &input,
+            UInt32(MemoryLayout<SMCKeyData>.size),
+            &output,
+            &outputSize
+        )
+        
+        guard result == KERN_SUCCESS else { return nil }
+        
+        let dataType = output.keyInfo.dataType
+        let dataSize = output.keyInfo.dataSize
+        
+        input.keyInfo.dataSize = dataSize
+        input.data8 = SMC_CMD_READ_BYTES
+        
+        let result2 = IOConnectCallStructMethod(
+            smcConnection,
+            UInt32(KERNEL_INDEX_SMC),
+            &input,
+            UInt32(MemoryLayout<SMCKeyData>.size),
+            &output,
+            &outputSize
+        )
+        
+        guard result2 == KERN_SUCCESS else { return nil }
+        
+        // 解析温度值 (SP78 格式: 高字节整数，低字节小数)
+        let temp = Double(output.bytes.0) + Double(output.bytes.1) / 256.0
+        return temp
+    }
+    
+    private func readFanSpeed() -> Int? {
+        guard smcConnection != 0 else { return nil }
+        
+        // 尝试读取 F0Ac (风扇 0 实际转速)
+        if let value = readSMCValue(key: "F0Ac") {
+            return Int(value)
+        }
+        
         return nil
+    }
+    
+    private func readSMCValue(key: String) -> UInt16? {
+        guard smcConnection != 0 else { return nil }
+        
+        var input = SMCKeyData()
+        var output = SMCKeyData()
+        var outputSize = UInt32(MemoryLayout<SMCKeyData>.size)
+        
+        let keyBytes = key.utf8.map { UInt8($0) }
+        guard keyBytes.count == 4 else { return nil }
+        
+        input.key = UInt32(bytes: keyBytes)
+        input.data8 = SMC_CMD_READ_KEYINFO
+        
+        let result = IOConnectCallStructMethod(
+            smcConnection,
+            UInt32(KERNEL_INDEX_SMC),
+            &input,
+            UInt32(MemoryLayout<SMCKeyData>.size),
+            &output,
+            &outputSize
+        )
+        
+        guard result == KERN_SUCCESS else { return nil }
+        
+        input.keyInfo.dataSize = output.keyInfo.dataSize
+        input.data8 = SMC_CMD_READ_BYTES
+        
+        let result2 = IOConnectCallStructMethod(
+            smcConnection,
+            UInt32(KERNEL_INDEX_SMC),
+            &input,
+            UInt32(MemoryLayout<SMCKeyData>.size),
+            &output,
+            &outputSize
+        )
+        
+        guard result2 == KERN_SUCCESS else { return nil }
+        
+        // 大端序
+        return UInt16(output.bytes.0) << 8 | UInt16(output.bytes.1)
+    }
+}
+
+// MARK: - SMC 常量和结构
+
+private let KERNEL_INDEX_SMC: Int32 = 2
+private let SMC_CMD_READ_KEYINFO: UInt8 = 9
+private let SMC_CMD_READ_BYTES: UInt8 = 5
+
+private struct SMCKeyData {
+    var key: UInt32 = 0
+    var vers: UInt8 = 0
+    var pad: UInt8 = 0
+    var data8: UInt8 = 0
+    var data32: UInt32 = 0
+    var bytes: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+                UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+                UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+                UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+    var result: UInt8 = 0
+    var status: UInt8 = 0
+    var data8_2: UInt8 = 0
+    var data32_2: UInt32 = 0
+    var keyInfo: SMCKeyInfo = SMCKeyInfo()
+}
+
+private struct SMCKeyInfo {
+    var dataSize: UInt32 = 0
+    var dataType: UInt32 = 0
+    var dataAttributes: UInt8 = 0
+}
+
+private extension UInt32 {
+    init(bytes: [UInt8]) {
+        self = UInt32(bytes[0]) << 24 | UInt32(bytes[1]) << 16 | UInt32(bytes[2]) << 8 | UInt32(bytes[3])
     }
 }
 
@@ -460,7 +609,7 @@ public class ProcessService {
     
     public init() {}
     
-    public func getTopProcesses(limit: Int = 10) async -> [ProcessEntry] {
+    public func getTopProcesses(limit: Int = 15) async -> [ProcessEntry] {
         var processList: [ProcessEntry] = []
         
         // 获取进程列表
@@ -483,15 +632,17 @@ public class ProcessService {
                 String(cString: UnsafeRawPointer($0).assumingMemoryBound(to: CChar.self))
             }
             
-            // 获取 CPU 使用率需要额外计算
-            // 获取内存使用率
+            // 获取内存使用
             let memSize = UInt64(proc.kp_eproc.e_xrssize) * UInt64(vm_kernel_page_size)
+            
+            // 获取 CPU 使用率需要 task_info，这里暂时设为 0
+            let cpuUsage: Double = 0
             
             let processEntry = ProcessEntry(
                 id: pid,
                 name: name,
-                cpuUsage: 0,  // 需要 task_info 计算
-                memoryUsage: UInt64(memSize) * 1024,
+                cpuUsage: cpuUsage,
+                memoryUsage: memSize,
                 threads: 0,
                 user: "",
                 startTime: nil
@@ -500,7 +651,7 @@ public class ProcessService {
             processList.append(processEntry)
         }
         
-        // 按内存排序，取前 N 个
+        // 按内存排序
         processList.sort { $0.memoryUsage > $1.memoryUsage }
         return Array(processList.prefix(limit))
     }
