@@ -1,0 +1,118 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build without tag'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build macOS App
+    runs-on: macos-13
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '14.3'
+      
+      - name: Get Version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="dev-$(date +%Y%m%d)"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+      
+      - name: Build App
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          BUILD_DIR=".build/release"
+          
+          # Build universal binary
+          swift build -c release --arch arm64 --arch x86_64
+          
+          # Create app bundle structure
+          mkdir -p StatBar.app/Contents/MacOS
+          mkdir -p StatBar.app/Contents/Resources
+          
+          # Copy executable
+          cp .build/apple/Products/Release/StatBar StatBar.app/Contents/MacOS/StatBar
+          
+          # Copy Info.plist
+          cp Sources/StatBar/Info.plist StatBar.app/Contents/Info.plist
+          
+          # Update version in Info.plist
+          sed -i '' "s/1.0/${VERSION}/" StatBar.app/Contents/Info.plist
+          
+          echo "App bundle created at StatBar.app"
+          ls -la StatBar.app/Contents/MacOS/
+      
+      - name: Create DMG
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          
+          # Create DMG
+          hdiutil create -volname "StatBar ${VERSION}" -srcfolder StatBar.app -ov -format UDZO StatBar-${VERSION}.dmg
+          
+          echo "DMG created: StatBar-${VERSION}.dmg"
+          ls -la StatBar-*.dmg
+      
+      - name: Create ZIP
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          zip -r StatBar-${VERSION}.zip StatBar.app
+          echo "ZIP created: StatBar-${VERSION}.zip"
+          ls -la StatBar-*.zip
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: StatBar-macOS
+          path: |
+            StatBar-*.dmg
+            StatBar-*.zip
+          retention-days: 1
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: StatBar ${{ steps.version.outputs.version }}
+          body: |
+            StatBar ${{ steps.version.outputs.version }}
+            
+            macOS menu bar performance monitor
+            
+            ### System Requirements
+            - macOS 11.0+ (Big Sur)
+            - Intel or Apple Silicon
+            
+            ### Features
+            - CPU usage monitoring
+            - Memory usage monitoring  
+            - Disk space monitoring
+            - Network speed monitoring
+            - Battery status monitoring
+            - Process list
+            - History charts
+          files: |
+            StatBar-*.dmg
+            StatBar-*.zip
+          draft: false
+          prerelease: false
