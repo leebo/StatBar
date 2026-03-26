@@ -21,18 +21,31 @@ struct StatBarApp: App {
         
         // 设置窗口
         WindowGroup("设置") {
-            SettingsView(settings: settings)
+            SettingsView(settings: settings, monitor: monitor)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 500, height: 400)
         
-        // 后台定时刷新
-        .onAppear {
-            monitor.updateInterval = settings.updateInterval
-            monitor.start()
+        // 启动监控
+        Settings {
+            MonitorSettingsView(monitor: monitor, settings: settings)
         }
-        .onDisappear {
-            monitor.stop()
-        }
+    }
+}
+
+// 启动时自动开始监控
+struct MonitorSettingsView: View {
+    @ObservedObject var monitor: SystemMonitor
+    @ObservedObject var settings: AppSettings
+    
+    var body: some View {
+        EmptyView()
+            .onAppear {
+                monitor.updateInterval = settings.updateInterval
+                monitor.start()
+            }
+            .onDisappear {
+                monitor.stop()
+            }
     }
 }
