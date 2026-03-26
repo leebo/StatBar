@@ -463,8 +463,8 @@ public class TemperatureService {
         
         var input = SMCKeyData()
         var output = SMCKeyData()
-        var inputSize = UInt32(MemoryLayout<SMCKeyData>.size)
-        var outputSize = UInt32(MemoryLayout<SMCKeyData>.size)
+        var inputSize = Int(MemoryLayout<SMCKeyData>.size)
+        var outputSize = Int(MemoryLayout<SMCKeyData>.size)
         
         // 将键名转换为 4 字节代码
         let keyBytes = key.utf8.map { UInt8($0) }
@@ -521,8 +521,8 @@ public class TemperatureService {
         
         var input = SMCKeyData()
         var output = SMCKeyData()
-        var inputSize = UInt32(MemoryLayout<SMCKeyData>.size)
-        var outputSize = UInt32(MemoryLayout<SMCKeyData>.size)
+        var inputSize = Int(MemoryLayout<SMCKeyData>.size)
+        var outputSize = Int(MemoryLayout<SMCKeyData>.size)
         
         let keyBytes = key.utf8.map { UInt8($0) }
         guard keyBytes.count == 4 else { return nil }
@@ -575,7 +575,7 @@ private struct SMCKeyData {
     var bytes: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
                 UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
                 UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
-                UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+                UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
     var result: UInt8 = 0
     var status: UInt8 = 0
     var data8_2: UInt8 = 0

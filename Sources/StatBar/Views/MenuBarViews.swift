@@ -108,9 +108,9 @@ struct MenuBarExtraView: View {
     private func openSettings() {
         // 打开设置窗口
         if let window = NSApplication.shared.windows.first(where: { $0.title == "设置" }) {
-            window.makeKeyAndOrderFront()
+            window.makeKeyAndOrderFront(nil)
         } else {
-            NSApp.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         }
     }
 }
