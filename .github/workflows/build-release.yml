@@ -59,12 +59,7 @@ jobs:
           # Update version in Info.plist
           sed -i '' "s/1.0.0/${VERSION}/" StatBar.app/Contents/Info.plist
           
-          # Generate and copy app icon
-          cd Scripts
-          python3 generate_icon.py
-          cd ..
-          
-          # Create .icns from PNG icons
+          # Create .icns from PNG icons (icons are pre-generated)
           mkdir -p icon.iconset
           cp Sources/StatBar/Assets/AppIcon.appiconset/icon_16x16.png icon.iconset/icon_16x16.png
           cp Sources/StatBar/Assets/AppIcon.appiconset/icon_32x32.png icon.iconset/icon_16x16@2x.png
@@ -91,11 +86,6 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.version }}
           
-          # Generate DMG background
-          cd Scripts
-          python3 generate_dmg_bg.py
-          cd ..
-          
           # Create temporary DMG folder
           DMG_DIR="dmg_temp"
           mkdir -p "$DMG_DIR"
@@ -112,7 +102,7 @@ jobs:
           # Mount DMG to set background and icon positions
           hdiutil attach temp.dmg -readwrite -mountpoint /Volumes/StatBar
           
-          # Set background image
+          # Set background image (pre-generated)
           mkdir -p /Volumes/StatBar/.background
           cp Sources/StatBar/Assets/dmg_background.png /Volumes/StatBar/.background/background.png
           cp Sources/StatBar/Assets/dmg_background@2x.png /Volumes/StatBar/.background/background@2x.png
