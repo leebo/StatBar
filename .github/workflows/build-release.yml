@@ -10,6 +10,7 @@ on:
         description: 'Force build without tag'
         type: boolean
         default: false
+
 permissions:
   contents: write
 
@@ -33,7 +34,7 @@ jobs:
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             VERSION="dev-$(date +%Y%m%d)"
           else
-            VERSION="${GITHUB_ref#refs/tags/}"
+            VERSION="${GITHUB_REF#refs/tags/}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Version: ${VERSION}"
@@ -47,7 +48,7 @@ jobs:
           
           # Create app bundle structure
           mkdir -p StatBar.app/Contents/MacOS
-          mkdir -pStatBar.app/Contents/Resources
+          mkdir -p StatBar.app/Contents/Resources
           
           # Copy executable
           cp .build/release/StatBar StatBar.app/Contents/MacOS/StatBar
@@ -66,7 +67,7 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           
           # Create DMG
-          hdiutil create -volname "StatBar ${VERSION}" -srcfolder StatBar.app-ov -format UDZO StatBar-${version}.dmg
+          hdiutil create -volname "StatBar ${VERSION}" -srcfolder StatBar.app -ov -format UDZO StatBar-${VERSION}.dmg
           
           echo "DMG created: StatBar-${VERSION}.dmg"
           ls -la StatBar-*.dmg
@@ -75,20 +76,19 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.version }}
           zip -r StatBar-${VERSION}.zip StatBar.app
-          echo "ZIP created: StatBar-${version}.zip"
+          echo "ZIP created: StatBar-${VERSION}.zip"
           ls -la StatBar-*.zip
       
       - name: Upload Release Assets
-        id: upload-release-assets
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: StatBar ${{ steps.version.outputs.version }}
           body: |
-            StatBar ${{ steps.version.outputs.version}}
+            StatBar ${{ steps.version.outputs.version }}
             
             macOS menu bar performance monitor
             
@@ -108,3 +108,8 @@ jobs:
             - 60-second history charts
             - Settings panel with customization
             - Launch at login support
+          files: |
+            StatBar-${{ steps.version.outputs.version }}.dmg
+            StatBar-${{ steps.version.outputs.version }}.zip
+          draft: false
+          prerelease: false
