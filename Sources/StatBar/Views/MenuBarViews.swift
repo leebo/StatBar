@@ -159,6 +159,33 @@ struct CPUDetailView: View {
                     GaugeView(value: cpu.system / 100, color: .red, label: "系统")
                     GaugeView(value: cpu.idle / 100, color: .gray, label: "空闲")
                 }
+                
+                // 每个核心的使用率
+                if !cpu.coreUsages.isEmpty {
+                    Divider()
+                    
+                    Text("各核心使用率")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    // 显示所有核心（按 4 列排列）
+                    let columns = 4
+                    let rows = (cpu.coreCount + columns - 1) / columns
+                    
+                    ForEach(0..<rows, id: \.self) { row in
+                        HStack(spacing: 8) {
+                            ForEach(0..<columns, id: \.self) { col in
+                                let index = row * columns + col
+                                if index < cpu.coreCount {
+                                    CoreUsageView(
+                                        index: index,
+                                        usage: cpu.coreUsages[index]
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 // 首次加载时显示加载状态
                 HStack {
@@ -189,6 +216,49 @@ struct CPUDetailView: View {
                     .foregroundColor(.secondary)
                     .frame(height: 80)
             }
+        }
+    }
+}
+
+// MARK: - 核心使用率视图
+
+struct CoreUsageView: View {
+    let index: Int
+    let usage: Double
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("C\(index)")
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(.secondary)
+            
+            // 小型进度条
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.gray.opacity(0.2))
+                    
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(colorForUsage(usage))
+                        .frame(width: geometry.size.width * CGFloat(usage / 100))
+                }
+            }
+            .frame(height: 6)
+            
+            Text(String(format: "%.0f%%", usage))
+                .font(.system(size: 7, weight: .medium, design: .monospaced))
+                .foregroundColor(.secondary)
+        }
+        .frame(width: 36)
+    }
+    
+    private func colorForUsage(_ usage: Double) -> Color {
+        if usage > 80 {
+            return .red
+        } else if usage > 50 {
+            return .orange
+        } else {
+            return .green
         }
     }
 }
@@ -292,66 +362,115 @@ struct DiskDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let disk = monitor.disk {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text("磁盘")
-                            .font(.headline)
-                        Text(disk.name)
+                // 读写速度面板（始终显示）
+                HStack(spacing: 24) {
+                    VStack {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundColor(.green)
+                        Text(disk.readSpeedFormatted)
                             .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("读取")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                     
-                    Spacer()
-                    
-                    VStack(alignment: .trailing) {
-                        Text(String(format: "%.0f%% 已用", disk.usagePercent))
-                            .font(.headline)
-                        Text(String(format: "%.0f GB 可用", disk.freeGB))
+                    VStack {
+                        Image(systemName: "arrow.up.circle")
+                            .foregroundColor(.blue)
+                        Text(disk.writeSpeedFormatted)
                             .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("写入")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(8)
                 
-                // 使用进度条
-                ProgressView(value: Double(disk.used), total: Double(disk.total))
-                    .accentColor(disk.usagePercent > 80 ? .red : .blue)
+                Divider()
                 
-                HStack {
-                    Text(String(format: "%.0f GB 已用", Double(disk.used) / 1_073_741_824.0))
-                    Spacer()
-                    Text(String(format: "%.0f GB 总计", disk.totalGB))
-                }
-                .font(.caption)
-                .foregroundColor(.secondary)
+                // 分区列表
+                Text("磁盘分区")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
                 
-                // 读写速度（如果有数据）
-                if disk.readSpeed > 0 || disk.writeSpeed > 0 {
-                    Divider()
-                    HStack(spacing: 24) {
-                        VStack {
-                            Image(systemName: "arrow.down.circle")
-                                .foregroundColor(.green)
-                            Text(disk.readSpeedFormatted)
-                                .font(.subheadline)
-                            Text("读取")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        VStack {
-                            Image(systemName: "arrow.up.circle")
-                                .foregroundColor(.blue)
-                            Text(disk.writeSpeedFormatted)
-                                .font(.subheadline)
-                            Text("写入")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
+                ForEach(disk.partitions) { partition in
+                    DiskPartitionRow(partition: partition)
                 }
             }
         }
+    }
+}
+
+// MARK: - 磁盘分区行
+
+struct DiskPartitionRow: View {
+    let partition: DiskPartitionInfo
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                // 分区名称和图标
+                HStack(spacing: 4) {
+                    Image(systemName: partition.isRoot ? "internaldrive" : "externaldrive")
+                        .font(.caption)
+                        .foregroundColor(partition.isRoot ? .blue : .secondary)
+                    
+                    Text(partition.name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    if partition.isRoot {
+                        Text("系统")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.blue)
+                            .cornerRadius(3)
+                    }
+                }
+                
+                Spacer()
+                
+                // 使用百分比
+                Text(String(format: "%.0f%%", partition.usagePercent))
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(partition.usagePercent > 80 ? .red : .primary)
+            }
+            
+            // 进度条
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.gray.opacity(0.2))
+                    
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(partition.usagePercent > 80 ? Color.red : (partition.usagePercent > 60 ? Color.orange : Color.blue))
+                        .frame(width: geometry.size.width * CGFloat(partition.usagePercent / 100))
+                }
+            }
+            .frame(height: 6)
+            
+            // 容量信息
+            HStack {
+                Text(String(format: "%.0f GB 可用", partition.freeGB))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Text(String(format: "%.0f / %.0f GB", partition.usedGB, partition.totalGB))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

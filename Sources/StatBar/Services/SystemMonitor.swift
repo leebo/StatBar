@@ -153,14 +153,11 @@ public class SystemMonitor: ObservableObject {
                     let readSpeed = (newDisk.readBytes - prevDisk.readBytes) / UInt64(elapsed)
                     let writeSpeed = (newDisk.writeBytes - prevDisk.writeBytes) / UInt64(elapsed)
                     self.disk = DiskInfo(
-                        total: newDisk.total,
-                        free: newDisk.free,
-                        used: newDisk.used,
+                        partitions: newDisk.partitions,
                         readBytes: newDisk.readBytes,
                         writeBytes: newDisk.writeBytes,
                         readSpeed: readSpeed,
-                        writeSpeed: writeSpeed,
-                        name: newDisk.name
+                        writeSpeed: writeSpeed
                     )
                 } else {
                     self.disk = newDisk
@@ -217,11 +214,15 @@ public class SystemMonitor: ObservableObject {
 public class CPUService {
     
     private var previousTicks: (user: UInt64, system: UInt64, idle: UInt64, nice: UInt64)?
+    private var previousCoreTicks: [[UInt64]] = []  // 每个核心的 ticks
     private var isFirstCall = true
     
     public init() {}
     
     public func getUsage() async -> CPUInfo? {
+        let coreCount = Foundation.ProcessInfo.processInfo.processorCount
+        
+        // 获取总体 CPU 使用率
         var cpuLoad = host_cpu_load_info()
         var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
         
@@ -238,7 +239,60 @@ public class CPUService {
         let idleTicks = UInt64(cpuLoad.cpu_ticks.2)
         let niceTicks = UInt64(cpuLoad.cpu_ticks.3)
         
-        let coreCount = Foundation.ProcessInfo.processInfo.processorCount
+        // 获取每个核心的使用率
+        var coreUsages: [Double] = []
+        
+        var numCPUs = natural_t(0)
+        var cpuInfo: processor_info_array_t?
+        var numCPUInfo = mach_msg_type_number_t(0)
+        
+        let coreResult = host_processor_info(
+            mach_host_self(),
+            PROCESSOR_CPU_LOAD_INFO,
+            &numCPUs,
+            &cpuInfo,
+            &numCPUInfo
+        )
+        
+        if coreResult == KERN_SUCCESS, let info = cpuInfo {
+            let ticksPerCore = Int(numCPUInfo) / Int(numCPUs)
+            var currentCoreTicks: [[UInt64]] = []
+            
+            for i in 0..<Int(numCPUs) {
+                let baseIndex = i * ticksPerCore
+                let user = UInt64(info[baseIndex + Int(CPU_STATE_USER)])
+                let system = UInt64(info[baseIndex + Int(CPU_STATE_SYSTEM)])
+                let idle = UInt64(info[baseIndex + Int(CPU_STATE_IDLE)])
+                let nice = UInt64(info[baseIndex + Int(CPU_STATE_NICE)])
+                
+                currentCoreTicks.append([user, system, idle, nice])
+                
+                // 计算该核心的使用率
+                if i < previousCoreTicks.count {
+                    let prev = previousCoreTicks[i]
+                    let userDelta = Double(user - prev[0])
+                    let systemDelta = Double(system - prev[1])
+                    let idleDelta = Double(idle - prev[2])
+                    let niceDelta = Double(nice - prev[3])
+                    
+                    let total = userDelta + systemDelta + idleDelta + niceDelta
+                    if total > 0 {
+                        let usage = (userDelta + systemDelta) / total * 100
+                        coreUsages.append(max(0, min(100, usage)))
+                    } else {
+                        coreUsages.append(0)
+                    }
+                } else {
+                    coreUsages.append(0)
+                }
+            }
+            
+            previousCoreTicks = currentCoreTicks
+            
+            // 释放内存
+            let size = vm_size_t(numCPUInfo) * vm_size_t(MemoryLayout<integer_t>.size)
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), size)
+        }
         
         // 首次调用返回默认值
         if isFirstCall {
@@ -250,11 +304,12 @@ public class CPUService {
                 user: 0,
                 system: 0,
                 idle: 100,
-                coreCount: coreCount
+                coreCount: coreCount,
+                coreUsages: Array(repeating: 0, count: coreCount)
             )
         }
         
-        // 计算增量
+        // 计算总体增量
         if let prev = previousTicks {
             let userDelta = Double(userTicks - prev.user)
             let systemDelta = Double(systemTicks - prev.system)
@@ -276,11 +331,19 @@ public class CPUService {
                 user: user,
                 system: system,
                 idle: idle,
-                coreCount: coreCount
+                coreCount: coreCount,
+                coreUsages: coreUsages.isEmpty ? Array(repeating: 0, count: coreCount) : coreUsages
             )
         } else {
             previousTicks = (userTicks, systemTicks, idleTicks, niceTicks)
-            return CPUInfo(usage: 0, user: 0, system: 0, idle: 100, coreCount: coreCount)
+            return CPUInfo(
+                usage: 0,
+                user: 0,
+                system: 0,
+                idle: 100,
+                coreCount: coreCount,
+                coreUsages: Array(repeating: 0, count: coreCount)
+            )
         }
     }
 }
@@ -347,29 +410,78 @@ public class DiskService {
     public init() {}
     
     public func getUsage() async -> DiskInfo? {
-        let fileManager = FileManager.default
+        var partitions: [DiskPartitionInfo] = []
         
-        guard let attributes = try? fileManager.attributesOfFileSystem(forPath: "/") else {
-            return nil
+        // 获取所有挂载的卷
+        let fileManager = FileManager.default
+        let volumeKeys: [URLResourceKey] = [
+            .volumeNameKey,
+            .volumeTotalCapacityKey,
+            .volumeAvailableCapacityKey,
+            .volumeIsMountedKey,
+            .volumeIsRootFileSystemKey,
+            .volumeIsEjectableKey,
+            .volumeIsRemovableKey
+        ]
+        
+        let options: FileManager.VolumeEnumerationOptions = [.skipHiddenVolumes]
+        
+        // 枚举所有挂载的卷
+        if let volumeURLs = fileManager.mountedVolumeURLs(includingResourceValuesForKeys: volumeKeys, options: options) {
+            for url in volumeURLs {
+                // 跳过网络卷和系统隐藏卷
+                guard let resourceValues = try? url.resourceValues(forKeys: Set(volumeKeys)) else { continue }
+                
+                guard let isMounted = resourceValues.volumeIsMounted, isMounted else { continue }
+                guard let total = resourceValues.volumeTotalCapacity else { continue }
+                guard let free = resourceValues.volumeAvailableCapacity else { continue }
+                let name = resourceValues.volumeName ?? "未知"
+                let isRoot = resourceValues.volumeIsRootFileSystem ?? false
+                
+                // 只显示根分区和大于 1GB 的本地卷
+                let isLargeEnough = total > 1_073_741_824  // 1GB
+                let isLocal = !url.path.hasPrefix("/Volumes/") || isLargeEnough
+                
+                if isRoot || isLocal {
+                    let partition = DiskPartitionInfo(
+                        total: UInt64(total),
+                        free: UInt64(free),
+                        used: UInt64(total - free),
+                        name: name,
+                        mountPoint: url.path
+                    )
+                    partitions.append(partition)
+                }
+            }
         }
         
-        let total = (attributes[.systemSize] as? UInt64) ?? 0
-        let free = (attributes[.systemFreeSize] as? UInt64) ?? 0
-        let used = total - free
+        // 确保至少有根分区
+        if partitions.isEmpty {
+            if let attributes = try? fileManager.attributesOfFileSystem(forPath: "/") {
+                let total = (attributes[.systemSize] as? UInt64) ?? 0
+                let free = (attributes[.systemFreeSize] as? UInt64) ?? 0
+                let volumeName = fileManager.displayName(atPath: "/")
+                let partition = DiskPartitionInfo(
+                    total: total,
+                    free: free,
+                    used: total - free,
+                    name: volumeName,
+                    mountPoint: "/"
+                )
+                partitions.append(partition)
+            }
+        }
         
-        // 获取卷名称
-        let volumeName = fileManager.displayName(atPath: "/")
+        // 按挂载点排序（根分区在前）
+        partitions.sort { $0.isRoot ? true : ($1.isRoot ? false : $0.mountPoint < $1.mountPoint) }
         
         // 读取磁盘 I/O 统计
         let diskStats = readDiskStats()
         
         return DiskInfo(
-            total: total,
-            free: free,
-            used: used,
+            partitions: partitions,
             readBytes: diskStats.readBytes,
-            writeBytes: diskStats.writeBytes,
-            name: volumeName
+            writeBytes: diskStats.writeBytes
         )
     }
     
