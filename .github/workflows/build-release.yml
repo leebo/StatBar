@@ -10,7 +10,6 @@ on:
         description: 'Force build without tag'
         type: boolean
         default: false
-
 permissions:
   contents: write
 
@@ -34,7 +33,7 @@ jobs:
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             VERSION="dev-$(date +%Y%m%d)"
           else
-            VERSION="${GITHUB_REF#refs/tags/}"
+            VERSION="${GITHUB_ref#refs/tags/}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Version: ${VERSION}"
@@ -42,14 +41,13 @@ jobs:
       - name: Build App
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          BUILD_DIR=".build/release"
           
           # Build release version
           swift build -c release
           
           # Create app bundle structure
           mkdir -p StatBar.app/Contents/MacOS
-          mkdir -p StatBar.app/Contents/Resources
+          mkdir -pStatBar.app/Contents/Resources
           
           # Copy executable
           cp .build/release/StatBar StatBar.app/Contents/MacOS/StatBar
@@ -68,7 +66,7 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           
           # Create DMG
-          hdiutil create -volname "StatBar ${VERSION}" -srcfolder StatBar.app -ov -format UDZO StatBar-${VERSION}.dmg
+          hdiutil create -volname "StatBar ${VERSION}" -srcfolder StatBar.app-ov -format UDZO StatBar-${version}.dmg
           
           echo "DMG created: StatBar-${VERSION}.dmg"
           ls -la StatBar-*.dmg
@@ -77,26 +75,20 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.version }}
           zip -r StatBar-${VERSION}.zip StatBar.app
-          echo "ZIP created: StatBar-${VERSION}.zip"
+          echo "ZIP created: StatBar-${version}.zip"
           ls -la StatBar-*.zip
       
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: StatBar-macOS
-          path: |
-            StatBar-*.dmg
-            StatBar-*.zip
-          retention-days: 1
-      
-      - name: Create Release
+      - name: Upload Release Assets
+        id: upload-release-assets
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_token }}
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: StatBar ${{ steps.version.outputs.version }}
           body: |
-            StatBar ${{ steps.version.outputs.version }}
+            StatBar ${{ steps.version.outputs.version}}
             
             macOS menu bar performance monitor
             
@@ -116,8 +108,3 @@ jobs:
             - 60-second history charts
             - Settings panel with customization
             - Launch at login support
-          files: |
-            StatBar-${{ steps.version.outputs.version }}.dmg
-            StatBar-${{ steps.version.outputs.version }}.zip
-          draft: false
-          prerelease: false
