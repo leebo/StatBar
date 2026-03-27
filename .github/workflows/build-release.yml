@@ -116,6 +116,8 @@ jobs:
             - 60-second history charts
             - Settings panel with customization
             - Launch at login support
-          files: artifacts/*
+          files: |
+            StatBar-${{ steps.version.outputs.version }}.dmg
+            StatBar-${{ steps.version.outputs.version }}.zip
           draft: false
           prerelease: false
