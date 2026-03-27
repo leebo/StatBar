@@ -382,14 +382,8 @@ struct NetworkDetailView: View {
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.largeTitle)
                             .foregroundColor(.green)
-                        if monitor.isFirstUpdate || network.downloadSpeed == 0 {
-                            Text("计算中...")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text(network.downloadSpeedFormatted)
-                                .font(.headline)
-                        }
+                        Text(network.downloadSpeedFormatted)
+                            .font(.headline)
                         Text("下载")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -399,14 +393,8 @@ struct NetworkDetailView: View {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.largeTitle)
                             .foregroundColor(.blue)
-                        if monitor.isFirstUpdate || network.uploadSpeed == 0 {
-                            Text("计算中...")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text(network.uploadSpeedFormatted)
-                                .font(.headline)
-                        }
+                        Text(network.uploadSpeedFormatted)
+                            .font(.headline)
                         Text("上传")
                             .font(.caption)
                             .foregroundColor(.secondary)

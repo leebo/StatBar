@@ -311,6 +311,9 @@ public class MemoryService {
         let inactive = UInt64(stats.inactive_count) * pageSize
         let wired = UInt64(stats.wire_count) * pageSize
         let compressed = UInt64(stats.compressor_page_count) * pageSize
+        
+        // 更准确的内存使用计算：total - free (可用内存)
+        // macOS 的 "App Memory" ≈ active + wired + compressed
         let used = active + wired + compressed
         
         // 内存压力评估
@@ -358,28 +361,67 @@ public class DiskService {
         let volumeName = fileManager.displayName(atPath: "/")
         
         // 读取磁盘 I/O 统计
-        var readBytes: UInt64 = 0
-        var writeBytes: UInt64 = 0
-        
-        if let diskStats = readDiskStats() {
-            readBytes = diskStats.readBytes
-            writeBytes = diskStats.writeBytes
-        }
+        let diskStats = readDiskStats()
         
         return DiskInfo(
             total: total,
             free: free,
             used: used,
-            readBytes: readBytes,
-            writeBytes: writeBytes,
+            readBytes: diskStats.readBytes,
+            writeBytes: diskStats.writeBytes,
             name: volumeName
         )
     }
     
-    private func readDiskStats() -> (readBytes: UInt64, writeBytes: UInt64)? {
-        // macOS 没有 /proc/diskstats，使用 IOKit 替代
-        // 简化实现，返回 nil
-        return nil
+    private func readDiskStats() -> (readBytes: UInt64, writeBytes: UInt64) {
+        var readBytes: UInt64 = 0
+        var writeBytes: UInt64 = 0
+        
+        // 使用 IOKit 获取磁盘统计
+        let matching = IOServiceMatching("IOMedia")
+        let iterator = UnsafeMutablePointer<io_iterator_t>.allocate(capacity: 1)
+        defer { iterator.deallocate() }
+        
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, iterator) == KERN_SUCCESS else {
+            return (0, 0)
+        }
+        
+        var service = IOIteratorNext(iterator.pointee)
+        while service != 0 {
+            defer { 
+                IOObjectRelease(service)
+                service = IOIteratorNext(iterator.pointee)
+            }
+            
+            // 获取父设备（通常是硬盘驱动器）
+            var parentIterator = io_iterator_t()
+            guard IORegistryEntryGetParentIterator(service, kIOServicePlane, &parentIterator) == KERN_SUCCESS else {
+                continue
+            }
+            
+            var parent = IOIteratorNext(parentIterator)
+            IOObjectRelease(parentIterator)
+            
+            guard parent != 0 else { continue }
+            defer { IOObjectRelease(parent) }
+            
+            // 获取统计属性
+            if let properties = IORegistryEntryCreateCFProperty(parent, "Statistics" as CFString, kCFAllocatorDefault, 0) {
+                if let stats = properties.takeRetainedValue() as? [String: Any] {
+                    // 读取字节数
+                    if let read = stats["Bytes (Read)"] as? UInt64 {
+                        readBytes += read
+                    }
+                    // 写入字节数
+                    if let write = stats["Bytes (Write)"] as? UInt64 {
+                        writeBytes += write
+                    }
+                }
+            }
+        }
+        
+        IOObjectRelease(iterator.pointee)
+        return (readBytes, writeBytes)
     }
 }
 
