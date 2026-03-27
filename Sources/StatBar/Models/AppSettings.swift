@@ -38,7 +38,7 @@ public class AppSettings: ObservableObject {
     
     // MARK: - 菜单栏显示设置
     
-    @Published public var showNetworkInMenuBar: Bool = false {
+    @Published public var showNetworkInMenuBar: Bool = true {
         didSet { save() }
     }
     
@@ -96,7 +96,7 @@ public class AppSettings: ObservableObject {
         showBattery = defaults.bool(forKey: prefix + "showBattery", defaultValue: true)
         showTemperature = defaults.bool(forKey: prefix + "showTemperature", defaultValue: false)
         showProcesses = defaults.bool(forKey: prefix + "showProcesses", defaultValue: true)
-        showNetworkInMenuBar = defaults.bool(forKey: prefix + "showNetworkInMenuBar", defaultValue: false)
+        showNetworkInMenuBar = defaults.bool(forKey: prefix + "showNetworkInMenuBar", defaultValue: true)
         updateInterval = defaults.double(forKey: prefix + "updateInterval", defaultValue: 1.0)
         historyLength = defaults.integer(forKey: prefix + "historyLength", defaultValue: 60)
         
