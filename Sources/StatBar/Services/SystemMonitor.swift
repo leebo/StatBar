@@ -418,10 +418,7 @@ public class DiskService {
             .volumeNameKey,
             .volumeTotalCapacityKey,
             .volumeAvailableCapacityKey,
-            .volumeIsMountedKey,
-            .volumeIsRootFileSystemKey,
-            .volumeIsEjectableKey,
-            .volumeIsRemovableKey
+            .volumeIsRootFileSystemKey
         ]
         
         let options: FileManager.VolumeEnumerationOptions = [.skipHiddenVolumes]
@@ -432,7 +429,6 @@ public class DiskService {
                 // 跳过网络卷和系统隐藏卷
                 guard let resourceValues = try? url.resourceValues(forKeys: Set(volumeKeys)) else { continue }
                 
-                guard let isMounted = resourceValues.volumeIsMounted, isMounted else { continue }
                 guard let total = resourceValues.volumeTotalCapacity else { continue }
                 guard let free = resourceValues.volumeAvailableCapacity else { continue }
                 let name = resourceValues.volumeName ?? "未知"
