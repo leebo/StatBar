@@ -148,6 +148,18 @@ struct CPUDetailView: View {
                     GaugeView(value: cpu.system / 100, color: .red, label: "系统")
                     GaugeView(value: cpu.idle / 100, color: .gray, label: "空闲")
                 }
+            } else {
+                // 首次加载时显示加载状态
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("CPU 使用率")
+                            .font(.headline)
+                        Text("计算中...")
+                            .font(.system(size: 24, weight: .medium, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
             }
             
             Divider()
@@ -159,6 +171,11 @@ struct CPUDetailView: View {
             
             if !monitor.history.cpu.isEmpty {
                 LineChartView(data: monitor.history.cpu, color: .blue)
+                    .frame(height: 80)
+            } else {
+                Text("等待数据...")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                     .frame(height: 80)
             }
         }
@@ -295,6 +312,33 @@ struct DiskDetailView: View {
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
+                
+                // 读写速度（如果有数据）
+                if disk.readSpeed > 0 || disk.writeSpeed > 0 {
+                    Divider()
+                    HStack(spacing: 24) {
+                        VStack {
+                            Image(systemName: "arrow.down.circle")
+                                .foregroundColor(.green)
+                            Text(disk.readSpeedFormatted)
+                                .font(.subheadline)
+                            Text("读取")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        VStack {
+                            Image(systemName: "arrow.up.circle")
+                                .foregroundColor(.blue)
+                            Text(disk.writeSpeedFormatted)
+                                .font(.subheadline)
+                            Text("写入")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
     }
@@ -327,8 +371,14 @@ struct NetworkDetailView: View {
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.largeTitle)
                             .foregroundColor(.green)
-                        Text(network.downloadSpeedFormatted)
-                            .font(.headline)
+                        if monitor.isFirstUpdate || network.downloadSpeed == 0 {
+                            Text("计算中...")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text(network.downloadSpeedFormatted)
+                                .font(.headline)
+                        }
                         Text("下载")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -338,8 +388,14 @@ struct NetworkDetailView: View {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.largeTitle)
                             .foregroundColor(.blue)
-                        Text(network.uploadSpeedFormatted)
-                            .font(.headline)
+                        if monitor.isFirstUpdate || network.uploadSpeed == 0 {
+                            Text("计算中...")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text(network.uploadSpeedFormatted)
+                                .font(.headline)
+                        }
                         Text("上传")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -374,6 +430,9 @@ struct NetworkDetailView: View {
                             .frame(height: 50)
                     }
                 }
+            } else {
+                Text("网络信息加载中...")
+                    .foregroundColor(.secondary)
             }
         }
     }
@@ -417,7 +476,7 @@ struct BatteryDetailView: View {
                             .foregroundColor(battery.isCharging ? .green : .primary)
                     }
                     
-                    if let time = battery.timeRemaining {
+                    if let time = battery.timeRemaining, time > 0 {
                         HStack {
                             Text("剩余时间")
                             Spacer()
@@ -432,11 +491,30 @@ struct BatteryDetailView: View {
                             Text("\(cycles)")
                         }
                     }
+                    
+                    if let health = battery.health {
+                        HStack {
+                            Text("电池健康")
+                            Spacer()
+                            Text(health.rawValue)
+                                .foregroundColor(health == .normal ? .green : health == .serviceRecommended ? .orange : .red)
+                        }
+                    }
                 }
                 .font(.subheadline)
             } else {
-                Text("无电池信息")
-                    .foregroundColor(.secondary)
+                VStack(spacing: 8) {
+                    Image(systemName: "battery.slash")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                    Text("无电池信息")
+                        .foregroundColor(.secondary)
+                    Text("此设备可能没有内置电池")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
             }
         }
     }
@@ -563,30 +641,96 @@ struct LineChartView: View {
         GeometryReader { geometry in
             let displayData = Array(data.suffix(maxPoints))
             
-            Path { path in
-                guard displayData.count > 1 else { return }
-                
-                let width = geometry.size.width
-                let height = geometry.size.height
-                let stepX = width / CGFloat(max(displayData.count - 1, 1))
-                
-                let values = displayData.map(\.value)
-                let maxValue = max(values.max() ?? 1, 0.1)
-                let minValue = values.min() ?? 0
-                let range = max(maxValue - minValue, 0.1)
-                
-                for (index, point) in displayData.enumerated() {
-                    let x = CGFloat(index) * stepX
-                    let y = height - CGFloat((point.value - minValue) / range) * height
-                    
-                    if index == 0 {
-                        path.move(to: CGPoint(x: x, y: y))
-                    } else {
-                        path.addLine(to: CGPoint(x: x, y: y))
+            ZStack {
+                // 背景网格
+                Path { path in
+                    let height = geometry.size.height
+                    for i in 0...4 {
+                        let y = height * CGFloat(i) / 4
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: geometry.size.width, y: y))
                     }
                 }
+                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+                
+                // 数据线
+                Path { path in
+                    guard displayData.count > 1 else { return }
+                    
+                    let width = geometry.size.width
+                    let height = geometry.size.height
+                    let stepX = width / CGFloat(max(displayData.count - 1, 1))
+                    
+                    let values = displayData.map(\.value)
+                    let maxValue = values.max() ?? 1
+                    let minValue = values.min() ?? 0
+                    
+                    // 处理所有值相同的情况
+                    let range: Double
+                    if maxValue == minValue {
+                        // 所有值相同，让线条在中间
+                        range = max(maxValue * 2, 1)
+                    } else {
+                        range = maxValue - minValue
+                    }
+                    
+                    for (index, point) in displayData.enumerated() {
+                        let x = CGFloat(index) * stepX
+                        let normalizedValue: Double
+                        if maxValue == minValue {
+                            normalizedValue = 0.5  // 中间位置
+                        } else {
+                            normalizedValue = (point.value - minValue) / range
+                        }
+                        let y = height - CGFloat(normalizedValue) * height * 0.9 - height * 0.05
+                        
+                        if index == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                
+                // 填充区域
+                Path { path in
+                    guard displayData.count > 1 else { return }
+                    
+                    let width = geometry.size.width
+                    let height = geometry.size.height
+                    let stepX = width / CGFloat(max(displayData.count - 1, 1))
+                    
+                    let values = displayData.map(\.value)
+                    let maxValue = values.max() ?? 1
+                    let minValue = values.min() ?? 0
+                    
+                    let range: Double
+                    if maxValue == minValue {
+                        range = max(maxValue * 2, 1)
+                    } else {
+                        range = maxValue - minValue
+                    }
+                    
+                    path.move(to: CGPoint(x: 0, y: height))
+                    
+                    for (index, point) in displayData.enumerated() {
+                        let x = CGFloat(index) * stepX
+                        let normalizedValue: Double
+                        if maxValue == minValue {
+                            normalizedValue = 0.5
+                        } else {
+                            normalizedValue = (point.value - minValue) / range
+                        }
+                        let y = height - CGFloat(normalizedValue) * height * 0.9 - height * 0.05
+                        path.addLine(to: CGPoint(x: x, y: y))
+                    }
+                    
+                    path.addLine(to: CGPoint(x: CGFloat(displayData.count - 1) * stepX, y: height))
+                    path.closeSubpath()
+                }
+                .fill(color.opacity(0.1))
             }
-            .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
         }
     }
 }

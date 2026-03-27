@@ -84,8 +84,10 @@ public struct DiskInfo {
     public let total: UInt64           // 总空间 (bytes)
     public let free: UInt64            // 可用空间
     public let used: UInt64            // 已用空间
-    public let readSpeed: UInt64       // 读取速度 (bytes/s)
-    public let writeSpeed: UInt64      // 写入速度 (bytes/s)
+    public let readBytes: UInt64       // 累计读取字节数
+    public let writeBytes: UInt64      // 累计写入字节数
+    public let readSpeed: UInt64       // 读取速度 (bytes/s) - 由 SystemMonitor 计算
+    public let writeSpeed: UInt64      // 写入速度 (bytes/s) - 由 SystemMonitor 计算
     public let name: String            // 卷名称
     public let timestamp: Date
     
@@ -102,11 +104,47 @@ public struct DiskInfo {
         return Double(used) / Double(total) * 100
     }
     
+    public var readSpeedFormatted: String {
+        formatSpeed(readSpeed)
+    }
+    
+    public var writeSpeedFormatted: String {
+        formatSpeed(writeSpeed)
+    }
+    
+    private func formatSpeed(_ bytes: UInt64) -> String {
+        if bytes < 1024 {
+            return "\(bytes) B/s"
+        } else if bytes < 1_048_576 {
+            return String(format: "%.1f KB/s", Double(bytes) / 1024.0)
+        } else if bytes < 1_073_741_824 {
+            return String(format: "%.1f MB/s", Double(bytes) / 1_048_576.0)
+        } else {
+            return String(format: "%.1f GB/s", Double(bytes) / 1_073_741_824.0)
+        }
+    }
+    
     public init(total: UInt64, free: UInt64, used: UInt64, 
+                readBytes: UInt64, writeBytes: UInt64, name: String) {
+        self.total = total
+        self.free = free
+        self.used = used
+        self.readBytes = readBytes
+        self.writeBytes = writeBytes
+        self.readSpeed = 0
+        self.writeSpeed = 0
+        self.name = name
+        self.timestamp = Date()
+    }
+    
+    public init(total: UInt64, free: UInt64, used: UInt64,
+                readBytes: UInt64, writeBytes: UInt64,
                 readSpeed: UInt64, writeSpeed: UInt64, name: String) {
         self.total = total
         self.free = free
         self.used = used
+        self.readBytes = readBytes
+        self.writeBytes = writeBytes
         self.readSpeed = readSpeed
         self.writeSpeed = writeSpeed
         self.name = name
