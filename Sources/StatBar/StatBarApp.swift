@@ -18,11 +18,6 @@ struct StatBarApp: App {
             }
         }
         .menuBarExtraStyle(.window)
-        .onAppear {
-            // 应用启动时开始监控
-            monitor.updateInterval = settings.updateInterval
-            monitor.start()
-        }
         
         // 设置窗口
         WindowGroup("设置") {

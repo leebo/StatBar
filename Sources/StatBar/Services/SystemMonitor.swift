@@ -54,6 +54,10 @@ public class SystemMonitor: ObservableObject {
     
     public init() {
         self.history = StatsHistory(maxPoints: 60)
+        // 自动启动监控
+        Task { @MainActor in
+            self.start()
+        }
     }
     
     // MARK: - Public Methods
