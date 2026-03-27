@@ -373,11 +373,6 @@ public class DiskService {
     }
     
     private func readDiskStats() -> (readBytes: UInt64, writeBytes: UInt64)? {
-        // 读取磁盘统计信息
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: "/proc/diskstats")) else {
-            return nil
-        }
-        
         // macOS 没有 /proc/diskstats，使用 IOKit 替代
         // 简化实现，返回 nil
         return nil
@@ -791,13 +786,15 @@ public class ProcessService {
     
     private func getProcessCPUUsage(pid: Int32, kinfoProc: kinfo_proc, now: Date) -> Double {
         // 使用 proc_pid_rusage 获取 CPU 时间
-        var usage = rusage_info_current()
+        var usage: rusage_info_t?
         let result = proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, &usage)
         
-        guard result == 0 else { return 0 }
+        guard result == 0, let info = usage else { return 0 }
         
-        // 计算总 CPU 时间（用户 + 系统）
-        let totalTime = usage.ri_user_time + usage.ri_system_time
+        // 从 rusage_info_v6 获取时间
+        // ri_user_time 和 ri_system_time 是 uint64_t，单位是纳秒
+        let infoPtr = info.assumingMemoryBound(to: rusage_info_current.self).pointee
+        let totalTime = infoPtr.ri_user_time + infoPtr.ri_system_time
         
         lock.wait()
         defer { lock.signal() }
@@ -807,7 +804,7 @@ public class ProcessService {
             let elapsed = now.timeIntervalSince(prev.timestamp)
             guard elapsed > 0 else { return 0 }
             
-            let timeDelta = Double(totalTime - prev.total)
+            let timeDelta = Double(totalTime - prev.total) / 1_000_000_000.0  // 纳秒转秒
             let cpuPercent = timeDelta / elapsed * 100.0  // 转换为百分比
             
             // 更新记录
