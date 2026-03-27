@@ -106,11 +106,22 @@ struct MenuBarExtraView: View {
     }
     
     private func openSettings() {
-        // 打开设置窗口
+        // 激活应用
+        NSApp.activate(ignoringOtherApps: true)
+        
+        // 查找或创建设置窗口
         if let window = NSApplication.shared.windows.first(where: { $0.title == "设置" }) {
             window.makeKeyAndOrderFront(nil)
         } else {
-            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            // 手动创建设置窗口
+            let settingsView = SettingsView(settings: settings, monitor: monitor)
+            let hostingController = NSHostingController(rootView: settingsView)
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = "设置"
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.setContentSize(NSSize(width: 500, height: 400))
+            window.center()
+            window.makeKeyAndOrderFront(nil)
         }
     }
 }
