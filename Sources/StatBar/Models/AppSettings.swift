@@ -36,6 +36,12 @@ public class AppSettings: ObservableObject {
         didSet { save() }
     }
     
+    // MARK: - 菜单栏显示设置
+    
+    @Published public var showNetworkInMenuBar: Bool = false {
+        didSet { save() }
+    }
+    
     // MARK: - 更新间隔
     
     @Published public var updateInterval: TimeInterval = 1.0 {
@@ -90,6 +96,7 @@ public class AppSettings: ObservableObject {
         showBattery = defaults.bool(forKey: prefix + "showBattery", defaultValue: true)
         showTemperature = defaults.bool(forKey: prefix + "showTemperature", defaultValue: false)
         showProcesses = defaults.bool(forKey: prefix + "showProcesses", defaultValue: true)
+        showNetworkInMenuBar = defaults.bool(forKey: prefix + "showNetworkInMenuBar", defaultValue: false)
         updateInterval = defaults.double(forKey: prefix + "updateInterval", defaultValue: 1.0)
         historyLength = defaults.integer(forKey: prefix + "historyLength", defaultValue: 60)
         
@@ -110,6 +117,7 @@ public class AppSettings: ObservableObject {
         defaults.set(showBattery, forKey: prefix + "showBattery")
         defaults.set(showTemperature, forKey: prefix + "showTemperature")
         defaults.set(showProcesses, forKey: prefix + "showProcesses")
+        defaults.set(showNetworkInMenuBar, forKey: prefix + "showNetworkInMenuBar")
         defaults.set(updateInterval, forKey: prefix + "updateInterval")
         defaults.set(historyLength, forKey: prefix + "historyLength")
         defaults.set(processSortBy.rawValue, forKey: prefix + "processSortBy")
